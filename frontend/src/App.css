@@ -1,0 +1,347 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=satoshi@400,500,700&display=swap');
+
+/* --- Reset & Variables --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --bg-deep: #06080d;
+  --panel: #0d111a;
+  --accent-cyan: #00f2fe;
+  --accent-violet: #8e2de2;
+  --accent-lime: #4ade80;
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-secondary: #7e8b9b;
+  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body {
+  font-family: 'Satoshi', sans-serif;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  /* Crisp engineered dot matrix background */
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 8, 13, 0.4), var(--bg-deep));
+  background-size: 28px 28px, 100% 100%;
+}
+
+/* Atmospheric scanning ambient light */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 450px;
+  background: radial-gradient(ellipse at top, rgba(142, 45, 226, 0.18) 0%, rgba(0, 242, 254, 0.08) 50%, transparent 80%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* --- Container --- */
+.app {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Card Frame & Animated Border Beam --- */
+.auth-card {
+  width: 100%;
+  max-width: 430px;
+  background: var(--panel);
+  border-radius: 28px;
+  padding: 44px 34px;
+  position: relative;
+  box-shadow: 
+    0 0 0 1px var(--border-glass),
+    0 30px 80px -15px rgba(0, 0, 0, 0.8),
+    0 50px 100px -20px rgba(0, 242, 254, 0.06);
+  isolation: isolate;
+  overflow: hidden;
+  animation: card-appear 0.8s var(--ease-out) forwards;
+}
+
+/* Linear-style rotating border-beam animation */
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: -150%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 300deg,
+    var(--accent-cyan) 330deg,
+    var(--accent-violet) 360deg
+  );
+  animation: rotate-beam 6s linear infinite;
+  z-index: -2;
+}
+
+.auth-card::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  background: linear-gradient(180deg, #111622 0%, #0c0f17 100%);
+  border-radius: calc(28px - 1.5px);
+  z-index: -1;
+}
+
+@keyframes rotate-beam {
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes card-appear {
+  0% { opacity: 0; transform: translateY(24px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --- Typography --- */
+h1 {
+  font-family: 'Clash Display', sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #fff;
+  display: inline-block;
+  background: linear-gradient(135deg, #ffffff 40%, rgba(255, 255, 255, 0.45) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.tagline {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+/* Live status pill indicator */
+.tagline::before {
+  content: "";
+  display: inline-block;
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  background: var(--accent-lime);
+  box-shadow: 0 0 10px var(--accent-lime);
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes radar-ping {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+h2 {
+  font-family: 'Clash Display', sans-serif;
+  margin-top: 32px;
+  margin-bottom: 6px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #f1f5f9;
+}
+
+.auth-card > div > p {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* --- Interactive Forms --- */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 26px;
+}
+
+input {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border-glass);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #ffffff;
+  font-family: 'Satoshi', sans-serif;
+  font-size: 14.5px;
+  outline: none;
+  transition: all 0.25s var(--ease-out);
+}
+
+input::placeholder {
+  color: #4b5563;
+  transition: color 0.2s ease;
+}
+
+input:focus {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(0, 242, 254, 0.65);
+  box-shadow: 
+    0 0 0 4px rgba(0, 242, 254, 0.12),
+    0 10px 25px -5px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+input:focus::placeholder {
+  color: #6b7280;
+}
+
+/* --- Buttons & Shimmer Animations --- */
+button {
+  width: 100%;
+  padding: 16px 20px;
+  border: none;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #06080d;
+  font-family: 'Satoshi', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease-elastic), box-shadow 0.25s var(--ease-out);
+  box-shadow: 0 4px 18px rgba(255, 255, 255, 0.15);
+}
+
+/* Slanted light reflection sweep */
+button::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.7),
+    transparent
+  );
+  transform: skewX(-22deg);
+  transition: none;
+}
+
+button:hover:not(:disabled)::before {
+  left: 220%;
+  transition: left 0.85s ease-in-out;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 25px rgba(0, 242, 254, 0.25),
+    0 4px 12px rgba(255, 255, 255, 0.25);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.96) translateY(0);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Secondary ghost action */
+button.secondary {
+  margin-top: 10px;
+  background: transparent;
+  color: #ffffff;
+  border: 1px solid var(--border-glass);
+  box-shadow: none;
+  text-transform: none;
+  font-size: 14px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+/* --- Switch & Hints --- */
+.switch-text {
+  margin-top: 28px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.hint {
+  margin-top: 18px;
+  color: #525c6a;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* --- Context Notification Box --- */
+.message {
+  margin-top: 22px;
+  padding: 14px 18px;
+  border: 1px solid rgba(0, 242, 254, 0.2);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.05), rgba(142, 45, 226, 0.05));
+  color: #a5f3fc;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: left;
+  position: relative;
+}
+
+/* --- Welcome Group --- */
+.welcome-buttons {
+  display: flex;
+  gap: 12px;
+  margin: 30px 0 16px;
+}
+
+.welcome-buttons button {
+  flex: 1;
+}
+
+/* --- Responsive Layout --- */
+@media (max-width: 480px) {
+  .app {
+    padding: 16px;
+  }
+  .auth-card {
+    padding: 34px 22px;
+    border-radius: 24px;
+  }
+  h1 {
+    font-size: 28px;
+  }
+  .welcome-buttons {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "BorrowBuddy - SRMIST Trichy Marketplace",
+  "short_name": "BorrowBuddy",
+  "description": "Student-to-student borrowing, lending, and academic support for SRMIST Tiruchirappalli",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBF9F4",
+  "theme_color": "#132238",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
