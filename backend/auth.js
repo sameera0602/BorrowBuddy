@@ -36,13 +36,16 @@ function setLoginCookie(res, user) {
     purpose: "session"
   }, "7d");
 
+  const isProduction = process.env.NODE_ENV === "production";
   res.cookie("borrowbuddy_token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/"
   });
+
+  return token;
 }
 
 
@@ -670,11 +673,12 @@ router.post("/login", async function (req, res) {
     }
 
     const effectiveRole = isAdminUser ? "admin" : "student";
-    setLoginCookie(res, { ...user, role: effectiveRole });
+    const token = setLoginCookie(res, { ...user, role: effectiveRole });
 
     return res.json({
       success: true,
       message: effectiveRole === "admin" ? "Admin portal login successful!" : "Login successful!",
+      token,
       user: {
         id: user.id,
         fullName: user.full_name,
@@ -699,10 +703,11 @@ router.post("/login", async function (req, res) {
 // ======================================
 
 router.post("/logout", function (req, res) {
+  const isProduction = process.env.NODE_ENV === "production";
   res.clearCookie("borrowbuddy_token", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
     path: "/"
   });
 

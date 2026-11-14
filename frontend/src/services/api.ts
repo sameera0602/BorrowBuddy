@@ -11,6 +11,12 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
   const url = `${API_BASE}${endpoint}`;
   const headers = new Headers(options.headers || {});
 
+  // Pass stored token in Authorization header for cross-domain support
+  const storedToken = localStorage.getItem("bb_token");
+  if (storedToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${storedToken}`);
+  }
+
   // Do not set Content-Type if sending FormData
   if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -29,7 +35,15 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
     throw new Error(`Server responded with status ${response.status}`);
   }
 
+  // Cache token if returned in response
+  if (data?.token) {
+    localStorage.setItem("bb_token", data.token);
+  }
+
   if (!response.ok || data.success === false) {
+    if (response.status === 401 && endpoint !== "/auth/login") {
+      localStorage.removeItem("bb_token");
+    }
     throw new Error(data.message || `Request failed (${response.status})`);
   }
 
@@ -62,10 +76,15 @@ export const api = {
       body: JSON.stringify({ collegeEmail, password })
     }),
 
-  logout: () =>
-    request("/auth/logout", {
-      method: "POST"
-    }),
+  logout: async () => {
+    try {
+      return await request("/auth/logout", {
+        method: "POST"
+      });
+    } finally {
+      localStorage.removeItem("bb_token");
+    }
+  },
 
   getMe: () =>
     request("/auth/me", {

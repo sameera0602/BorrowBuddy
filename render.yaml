@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: borrowbuddy-backend
+    env: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: COLLEGE_EMAIL_DOMAIN
+        value: srmist.edu.in
+      - key: ADMIN_ROLL_NUMBER
+        value: "SM 471"
+      - key: ADMIN_EMAIL
+        value: sm4721@srmist.edu.in
+      - key: FRONTEND_URL
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 3306
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: borrowbuddy
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OTP_SECRET
+        generateValue: true
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false

@@ -24,9 +24,24 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // CORS setup
-const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+  "http://localhost:3000"
+].filter(Boolean);
+
 app.use(cors({
-  origin: frontendOrigin,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".vercel.app") ||
+      (process.env.NODE_ENV !== "production" && origin.includes("localhost"))
+    ) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS blocked for origin: ${origin}`), false);
+  },
   credentials: true
 }));
 
