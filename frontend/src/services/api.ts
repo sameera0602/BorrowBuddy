@@ -1,4 +1,7 @@
-export const SERVER_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+export const SERVER_BASE = (
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.origin ? window.location.origin : "http://localhost:5000")
+).replace(/\/$/, "");
 export const API_BASE = `${SERVER_BASE}/api`;
 
 export function getAssetUrl(path: string | null | undefined): string {

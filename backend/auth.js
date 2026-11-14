@@ -49,16 +49,13 @@ function setLoginCookie(res, user) {
 }
 
 
-// NORMALIZE COLLEGE EMAIL / ROLL NUMBER
+// NORMALIZE COLLEGE EMAIL
 function normalizeCollegeEmail(input) {
   let val = String(input || "").trim().toLowerCase();
   val = val.replace(/\s+/g, "");
   if (!val) return "";
-  if (val === "sm471" || val === "sm4721") {
+  if (val === "sm471" || val === "sm4721" || val === "sm471@srmist.edu.in" || val === "sm4721@srmist.edu.in") {
     return "sm4721@srmist.edu.in";
-  }
-  if (!val.includes("@")) {
-    return `${val}@srmist.edu.in`;
   }
   return val;
 }
@@ -72,18 +69,19 @@ router.post("/check-user", async function (req, res) {
     if (!rawInput) {
       return res.status(400).json({
         success: false,
-        message: "Please enter your Student ID or college email."
+        message: "Please enter your official college email (e.g. sm4557@srmist.edu.in)."
       });
     }
 
-    const cleanEmail = normalizeCollegeEmail(rawInput);
+    const norm = rawInput.toLowerCase().replace(/\s+/g, "");
     const adminEmail = (process.env.ADMIN_EMAIL || "sm4721@srmist.edu.in").toLowerCase();
 
-    // Check if it matches admin roll number or email
+    // Check if it matches authorized admin identity (SM4721, SM471, or sm4721@srmist.edu.in)
     const isExplicitAdmin =
-      rawInput.toLowerCase().replace(/\s+/g, "") === "sm4721" ||
-      rawInput.toLowerCase().replace(/\s+/g, "") === "sm471" ||
-      cleanEmail === adminEmail;
+      norm === "sm4721" ||
+      norm === "sm471" ||
+      norm === adminEmail ||
+      norm === "sm471@srmist.edu.in";
 
     if (isExplicitAdmin) {
       return res.json({
@@ -95,13 +93,15 @@ router.post("/check-user", async function (req, res) {
       });
     }
 
-    if (!/^[^\s@]+@srmist\.edu\.in$/.test(cleanEmail)) {
+    // For all other users: MUST be an official @srmist.edu.in college email
+    if (!/^[a-zA-Z0-9._%+-]+@srmist\.edu\.in$/.test(norm)) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a valid SRM student roll number (e.g. sm4721) or @srmist.edu.in email."
+        message: "Please enter your official college email only (e.g. sm4557@srmist.edu.in). Register numbers are not allowed."
       });
     }
 
+    const cleanEmail = norm;
     const [users] = await db.execute(
       "SELECT id, full_name, college_email, role FROM users WHERE college_email = ? LIMIT 1",
       [cleanEmail]

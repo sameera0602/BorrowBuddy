@@ -45,28 +45,6 @@ export function AuthPage() {
     setScreen("identify");
   }
 
-  // Handle direct Admin 1-Click Access
-  async function handleAdminQuickLogin() {
-    setMessage("");
-    setIsError(false);
-    setLoading(true);
-
-    try {
-      const res = await api.adminQuickLogin();
-      if (res.success && res.user) {
-        setUser(res.user);
-        setCurrentTab("admin"); // DIRECT TO ADMIN PORTAL!
-      } else {
-        throw new Error(res.message || "Could not grant admin access.");
-      }
-    } catch (err) {
-      setIsError(true);
-      setMessage(err instanceof Error ? err.message : "Admin login failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // 1. STEP ONE: IDENTIFY ID / EMAIL
   async function handleIdentifySubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,24 +55,39 @@ export function AuthPage() {
     const cleanInput = identifier.trim();
     if (!cleanInput) {
       setIsError(true);
-      setMessage("Please enter your SRM Student ID or college email.");
+      setMessage("Please enter your official college email (e.g. sm4557@srmist.edu.in).");
       setLoading(false);
       return;
     }
 
-    // Check for sm4721 admin roll number directly
     const norm = cleanInput.toLowerCase().replace(/\s+/g, "");
-    if (norm === "sm4721" || norm === "sm471" || norm === "sm4721@srmist.edu.in") {
-      await handleAdminQuickLogin();
+
+    // Check for authorized admin identity (SM4721, SM471, or sm4721@srmist.edu.in)
+    if (norm === "sm4721" || norm === "sm471" || norm === "sm4721@srmist.edu.in" || norm === "sm471@srmist.edu.in") {
+      setResolvedEmail("sm4721@srmist.edu.in");
+      setFullName("Sameera (Admin SM 471)");
+      setScreen("login");
+      setMessage("Admin Account Detected (SM 471). Please enter your password to access the Admin Portal.");
+      setLoading(false);
+      return;
+    }
+
+    // For all other users: MUST be an official @srmist.edu.in college email
+    if (!/^[^\s@]+@srmist\.edu\.in$/.test(norm)) {
+      setIsError(true);
+      setMessage("Please enter your official college email only (e.g. sm4557@srmist.edu.in). Register numbers are not allowed.");
+      setLoading(false);
       return;
     }
 
     try {
-      const checkRes = await api.checkUser(cleanInput);
+      const checkRes = await api.checkUser(norm);
 
       if (checkRes.isAdmin) {
-        // If identified as admin, log directly into admin portal
-        await handleAdminQuickLogin();
+        setResolvedEmail(checkRes.email);
+        setFullName(checkRes.fullName || "Sameera (Admin SM 471)");
+        setScreen("login");
+        setMessage("Admin Account Detected (SM 471). Please enter your password to access the Admin Portal.");
         return;
       }
 
@@ -310,34 +303,34 @@ export function AuthPage() {
         )}
 
         {/* ============================================================== */}
-        {/* 1. SCREEN: IDENTIFY (Unified Single Entry)                      */}
+        {/* 1. SCREEN: IDENTIFY (College Email Entry)                      */}
         {/* ============================================================== */}
         {screen === "identify" && (
           <div>
             <div style={{ marginBottom: 20, textAlign: "center" }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-main)" }}>
-                Sign In to Campus Circle
+                Sign In with College Email
               </h2>
               <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 4 }}>
-                Enter your student roll number or SRM college email to continue.
+                Enter your official SRMIST college email to continue.
               </p>
             </div>
 
             <form onSubmit={handleIdentifySubmit}>
               <div className="form-group">
-                <label>Student ID or College Email</label>
+                <label>Official College Email</label>
                 <div style={{ position: "relative" }}>
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. sm4721 or rollno@srmist.edu.in"
+                    placeholder="eg. sm4557@srmist.edu.in"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     required
                     autoFocus
                     style={{ paddingLeft: 42 }}
                   />
-                  <UserIcon
+                  <Mail
                     size={18}
                     style={{
                       position: "absolute",
@@ -349,7 +342,7 @@ export function AuthPage() {
                   />
                 </div>
                 <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
-                  Enter your roll number (e.g. <strong>sm4721</strong>) or your full official @srmist.edu.in email.
+                  Only official <strong>@srmist.edu.in</strong> emails are accepted.
                 </p>
               </div>
 
@@ -359,7 +352,7 @@ export function AuthPage() {
                 style={{ width: "100%", marginTop: 6 }}
                 disabled={loading}
               >
-                {loading ? "Checking ID..." : (
+                {loading ? "Checking Email..." : (
                   <>
                     <span>Continue</span>
                     <ArrowRight size={17} />
@@ -367,48 +360,6 @@ export function AuthPage() {
                 )}
               </button>
             </form>
-
-            {/* Quick Admin Access Button */}
-            <div
-              style={{
-                marginTop: 22,
-                padding: "14px",
-                borderRadius: "var(--radius-lg)",
-                background: "linear-gradient(135deg, rgba(109, 74, 255, 0.08) 0%, rgba(53, 200, 138, 0.08) 100%)",
-                border: "1px dashed rgba(109, 74, 255, 0.3)",
-                textAlign: "center"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--primary)" }}>
-                <Crown size={15} />
-                <span>Authorized Admin Identity</span>
-              </div>
-              <p style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 0 10px" }}>
-                Roll No: <strong>SM 471</strong> (sm4721@srmist.edu.in)
-              </p>
-              <button
-                type="button"
-                onClick={handleAdminQuickLogin}
-                disabled={loading}
-                style={{
-                  width: "100%",
-                  padding: "9px 14px",
-                  borderRadius: "var(--radius-md)",
-                  background: "var(--ink)",
-                  color: "#FFFFFF",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  boxShadow: "0 4px 12px rgba(23, 32, 51, 0.15)"
-                }}
-              >
-                <Sparkles size={14} color="#A7F3D0" />
-                <span>One-Click Admin Login (sm4721)</span>
-              </button>
-            </div>
           </div>
         )}
 
@@ -418,15 +369,22 @@ export function AuthPage() {
         {screen === "login" && (
           <div>
             <div style={{ marginBottom: 20 }}>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--primary-light)", color: "var(--primary)", padding: "4px 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, marginBottom: 8 }}>
-                <CheckCircle2 size={13} />
-                <span>Verified Account Found</span>
-              </div>
+              {resolvedEmail === "sm4721@srmist.edu.in" ? (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(109, 74, 255, 0.12)", color: "var(--primary)", padding: "4px 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, marginBottom: 8 }}>
+                  <Crown size={14} color="var(--accent-yellow)" />
+                  <span>Authorized Admin Identity (SM 471)</span>
+                </div>
+              ) : (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--primary-light)", color: "var(--primary)", padding: "4px 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, marginBottom: 8 }}>
+                  <CheckCircle2 size={13} />
+                  <span>Verified Student Account</span>
+                </div>
+              )}
               <h2 style={{ fontSize: 21, fontWeight: 700, color: "var(--text-main)" }}>
-                Welcome back, {fullName}! 👋
+                {resolvedEmail === "sm4721@srmist.edu.in" ? "Admin Portal Login" : `Welcome back, ${fullName}! 👋`}
               </h2>
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-                Sign in with your password for <strong>{resolvedEmail}</strong>
+                Enter your password for <strong>{resolvedEmail}</strong>
               </p>
             </div>
 
@@ -463,7 +421,12 @@ export function AuthPage() {
                 style={{ width: "100%", marginTop: 8 }}
                 disabled={loading}
               >
-                {loading ? "Signing in..." : "Log In to BorrowBuddy"}
+                {loading ? "Signing in..." : (
+                  <>
+                    <span>{resolvedEmail === "sm4721@srmist.edu.in" ? "Open Admin Portal" : "Log In to BorrowBuddy"}</span>
+                    <ArrowRight size={17} />
+                  </>
+                )}
               </button>
             </form>
 
