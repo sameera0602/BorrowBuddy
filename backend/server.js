@@ -23,24 +23,10 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// CORS setup
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  "http://localhost:5173",
-  "http://localhost:3000"
-].filter(Boolean);
-
+// CORS setup — dynamically reflect requesting origin so tunnels, Vercel, and local work with credentials
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.endsWith(".vercel.app") ||
-      (process.env.NODE_ENV !== "production" && origin.includes("localhost"))
-    ) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    callback(null, true);
   },
   credentials: true
 }));
