@@ -13,24 +13,39 @@ router.get("/", requireAuth, async function (req, res) {
 
     const [conversations] = await db.execute(
       `SELECT 
-        c.id, c.type, c.booking_id, c.help_request_id, c.created_at, c.updated_at,
+        c.id, c.type, c.booking_id, c.listing_id, c.help_request_id, c.created_at, c.updated_at,
         c.user1_id, c.user2_id,
         u1.full_name AS user1_name, u1.college_email AS user1_email,
         u2.full_name AS user2_name, u2.college_email AS user2_email,
-        l.title AS item_title,
-        hr.title AS help_title
+        COALESCE(l.title, l2.title) AS item_title,
+        COALESCE(l.id, l2.id) AS item_id,
+        COALESCE(l.rental_price_per_day, l2.rental_price_per_day) AS rental_price_per_day,
+        COALESCE(l.pickup_location, l2.pickup_location) AS pickup_location,
+        COALESCE(l.owner_id, l2.owner_id) AS item_owner_id,
+        hr.title AS help_title,
+        b.status AS booking_status,
+        b.borrower_confirmed_pickup,
+        b.lender_confirmed_pickup,
+        b.borrower_confirmed_return,
+        b.lender_confirmed_return,
+        b.borrower_id AS booking_borrower_id,
+        b.owner_id AS booking_owner_id,
+        b.total_price AS booking_total_price,
+        b.start_date AS booking_start_date,
+        b.end_date AS booking_end_date
        FROM conversations c
        JOIN users u1 ON c.user1_id = u1.id
        JOIN users u2 ON c.user2_id = u2.id
        LEFT JOIN bookings b ON c.booking_id = b.id
        LEFT JOIN listings l ON b.listing_id = l.id
+       LEFT JOIN listings l2 ON c.listing_id = l2.id
        LEFT JOIN help_requests hr ON c.help_request_id = hr.id
        WHERE c.user1_id = ? OR c.user2_id = ?
        ORDER BY c.updated_at DESC`,
       [currentUserId, currentUserId]
     );
 
-    // Fetch latest message for each conversation
+    // Fetch primary image and latest message for each conversation
     for (const conv of conversations) {
       const isUser1 = conv.user1_id === currentUserId;
       conv.other_user = {
@@ -38,6 +53,14 @@ router.get("/", requireAuth, async function (req, res) {
         name: isUser1 ? conv.user2_name : conv.user1_name,
         email: isUser1 ? conv.user2_email : conv.user1_email
       };
+
+      if (conv.item_id) {
+        const [imgs] = await db.execute(
+          "SELECT image_url FROM listing_images WHERE listing_id = ? ORDER BY is_primary DESC, id ASC LIMIT 1",
+          [conv.item_id]
+        );
+        conv.item_image = imgs.length > 0 ? imgs[0].image_url : null;
+      }
 
       const [lastMsg] = await db.execute(
         `SELECT message_text, created_at, sender_id 
@@ -62,7 +85,7 @@ router.get("/", requireAuth, async function (req, res) {
 });
 
 // ==========================================
-// 2. GET MESSAGES IN CONVERSATION
+// 2. GET MESSAGES IN CONVERSATION WITH ITEM/BOOKING CONTEXT
 // ==========================================
 router.get("/:id/messages", requireAuth, async function (req, res) {
   try {
@@ -73,14 +96,36 @@ router.get("/:id/messages", requireAuth, async function (req, res) {
 
     // Verify participant or admin
     const [convRows] = await db.execute(
-      `SELECT c.id, c.type, c.user1_id, c.user2_id, c.booking_id, c.help_request_id,
-              u1.full_name AS user1_name, u2.full_name AS user2_name,
-              l.title AS item_title, hr.title AS help_title
+      `SELECT c.id, c.type, c.user1_id, c.user2_id, c.booking_id, c.listing_id, c.help_request_id,
+              u1.full_name AS user1_name, u1.college_email AS user1_email,
+              u2.full_name AS user2_name, u2.college_email AS user2_email,
+              COALESCE(l.title, l2.title) AS item_title,
+              COALESCE(l.id, l2.id) AS item_id,
+              COALESCE(l.rental_price_per_day, l2.rental_price_per_day) AS rental_price_per_day,
+              COALESCE(l.deposit_amount, l2.deposit_amount) AS deposit_amount,
+              COALESCE(l.pickup_location, l2.pickup_location) AS pickup_location,
+              COALESCE(l.owner_id, l2.owner_id) AS item_owner_id,
+              hr.title AS help_title,
+              b.id AS current_booking_id,
+              b.status AS booking_status,
+              b.borrower_confirmed_pickup,
+              b.lender_confirmed_pickup,
+              b.borrower_confirmed_return,
+              b.lender_confirmed_return,
+              b.borrower_id AS booking_borrower_id,
+              b.owner_id AS booking_owner_id,
+              b.total_price AS booking_total_price,
+              b.agreed_price AS booking_agreed_price,
+              b.start_date AS booking_start_date,
+              b.end_date AS booking_end_date,
+              b.borrower_notes,
+              b.owner_response_notes
        FROM conversations c
        JOIN users u1 ON c.user1_id = u1.id
        JOIN users u2 ON c.user2_id = u2.id
        LEFT JOIN bookings b ON c.booking_id = b.id
        LEFT JOIN listings l ON b.listing_id = l.id
+       LEFT JOIN listings l2 ON c.listing_id = l2.id
        LEFT JOIN help_requests hr ON c.help_request_id = hr.id
        WHERE c.id = ?`,
       [convId]
@@ -111,8 +156,60 @@ router.get("/:id/messages", requireAuth, async function (req, res) {
     const isUser1 = conv.user1_id === req.user.id;
     const partner = {
       id: isUser1 ? conv.user2_id : conv.user1_id,
-      name: isUser1 ? conv.user2_name : conv.user1_name
+      name: isUser1 ? conv.user2_name : conv.user1_name,
+      email: isUser1 ? conv.user2_email : conv.user1_email
     };
+
+    // Item image if listing is attached
+    let itemImage = null;
+    if (conv.item_id) {
+      const [imgs] = await db.execute(
+        "SELECT image_url FROM listing_images WHERE listing_id = ? ORDER BY is_primary DESC, id ASC LIMIT 1",
+        [conv.item_id]
+      );
+      if (imgs.length > 0) itemImage = imgs[0].image_url;
+    }
+
+    // Role identification
+    let userRole = "student";
+    if (conv.current_booking_id) {
+      if (req.user.id === conv.booking_owner_id) userRole = "lender";
+      else if (req.user.id === conv.booking_borrower_id) userRole = "borrower";
+    } else if (conv.item_id) {
+      if (req.user.id === conv.item_owner_id) userRole = "lender";
+      else userRole = "borrower";
+    }
+
+    const bookingContext = conv.current_booking_id
+      ? {
+          id: conv.current_booking_id,
+          status: conv.booking_status,
+          borrower_confirmed_pickup: Boolean(conv.borrower_confirmed_pickup),
+          lender_confirmed_pickup: Boolean(conv.lender_confirmed_pickup),
+          borrower_confirmed_return: Boolean(conv.borrower_confirmed_return),
+          lender_confirmed_return: Boolean(conv.lender_confirmed_return),
+          borrower_id: conv.booking_borrower_id,
+          owner_id: conv.booking_owner_id,
+          total_price: conv.booking_total_price,
+          agreed_price: conv.booking_agreed_price,
+          start_date: conv.booking_start_date,
+          end_date: conv.booking_end_date,
+          borrower_notes: conv.borrower_notes,
+          owner_response_notes: conv.owner_response_notes
+        }
+      : null;
+
+    const itemContext = conv.item_id
+      ? {
+          id: conv.item_id,
+          title: conv.item_title,
+          image_url: itemImage,
+          rental_price_per_day: conv.rental_price_per_day,
+          deposit_amount: conv.deposit_amount,
+          pickup_location: conv.pickup_location,
+          owner_id: conv.item_owner_id
+        }
+      : null;
 
     return res.json({
       success: true,
@@ -120,7 +217,12 @@ router.get("/:id/messages", requireAuth, async function (req, res) {
         id: conv.id,
         type: conv.type,
         title: conv.item_title || conv.help_title || "Direct Message",
-        partner
+        booking_id: conv.booking_id,
+        listing_id: conv.listing_id,
+        partner,
+        item: itemContext,
+        booking: bookingContext,
+        userRole
       },
       messages
     });
@@ -193,7 +295,96 @@ router.post("/:id/messages", requireAuth, async function (req, res) {
 });
 
 // ==========================================
-// 4. START OR OPEN DIRECT CHAT (FOR CAMPUS FAVORS & DM)
+// 4. START OR OPEN DIRECT CHAT FOR A LISTING ITEM
+// ==========================================
+router.post("/item", requireAuth, async function (req, res) {
+  try {
+    const { listingId, initialMessage } = req.body;
+    const currentUserId = req.user.id;
+
+    const parsedListingId = parseInt(listingId, 10);
+    if (isNaN(parsedListingId)) {
+      return res.status(400).json({ success: false, message: "Valid listing ID is required." });
+    }
+
+    const [listings] = await db.execute(
+      "SELECT id, owner_id, title, rental_price_per_day, pickup_location FROM listings WHERE id = ?",
+      [parsedListingId]
+    );
+
+    if (listings.length === 0) {
+      return res.status(404).json({ success: false, message: "Listing not found." });
+    }
+
+    const listing = listings[0];
+    const ownerId = listing.owner_id;
+
+    if (ownerId === currentUserId) {
+      return res.status(400).json({ success: false, message: "You cannot start a chat with yourself on your own item." });
+    }
+
+    // Check if an existing conversation exists between current user and owner for this item/booking
+    const [existing] = await db.execute(
+      `SELECT c.id FROM conversations c
+       LEFT JOIN bookings b ON c.booking_id = b.id
+       WHERE ((c.user1_id = ? AND c.user2_id = ?) OR (c.user1_id = ? AND c.user2_id = ?))
+       AND (c.listing_id = ? OR b.listing_id = ?)
+       ORDER BY c.updated_at DESC
+       LIMIT 1`,
+      [currentUserId, ownerId, ownerId, currentUserId, parsedListingId, parsedListingId]
+    );
+
+    let conversationId;
+
+    if (existing.length > 0) {
+      conversationId = existing[0].id;
+      if (initialMessage && initialMessage.trim()) {
+        await db.execute(
+          "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+          [conversationId, currentUserId, String(initialMessage).trim()]
+        );
+        await db.execute("UPDATE conversations SET updated_at = NOW() WHERE id = ?", [conversationId]);
+      }
+    } else {
+      // Check if there is an existing booking between them
+      const [bookings] = await db.execute(
+        `SELECT id FROM bookings 
+         WHERE listing_id = ? AND borrower_id = ? 
+         ORDER BY id DESC LIMIT 1`,
+        [parsedListingId, currentUserId]
+      );
+      const bookingId = bookings.length > 0 ? bookings[0].id : null;
+
+      const [resConv] = await db.execute(
+        `INSERT INTO conversations (type, booking_id, listing_id, user1_id, user2_id)
+         VALUES ('listing', ?, ?, ?, ?)`,
+        [bookingId, parsedListingId, currentUserId, ownerId]
+      );
+      conversationId = resConv.insertId;
+
+      const initText = initialMessage && initialMessage.trim()
+        ? String(initialMessage).trim()
+        : `Hi! I saw your listing for "${listing.title}" (₹${listing.rental_price_per_day}/day at ${listing.pickup_location}) and would like to chat & coordinate!`;
+
+      await db.execute(
+        "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+        [conversationId, currentUserId, initText]
+      );
+    }
+
+    return res.json({
+      success: true,
+      conversationId,
+      listingTitle: listing.title
+    });
+  } catch (err) {
+    console.error("Start item chat error:", err.message);
+    return res.status(500).json({ success: false, message: "Failed to open item chat." });
+  }
+});
+
+// ==========================================
+// 5. START OR OPEN DIRECT CHAT (FOR CAMPUS FAVORS & DM)
 // ==========================================
 router.post("/start-direct", requireAuth, async function (req, res) {
   try {

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import type { Listing } from "../types";
 import { api } from "../services/api";
-import { AlertCircle, X, Check } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { AlertCircle, X, Check, MessageSquare } from "lucide-react";
 
 interface BookingModalProps {
   listing: Listing | null;
@@ -10,6 +11,7 @@ interface BookingModalProps {
 }
 
 export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps) {
+  const { openChat } = useAuth();
   if (!listing) return null;
 
   const currentListing = listing;
@@ -20,6 +22,7 @@ export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [createdConvId, setCreatedConvId] = useState<number | null>(null);
 
   // Calculate rental days
   const start = new Date(startDate);
@@ -36,6 +39,24 @@ export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps)
     return !(endDate < rangeStart || startDate > rangeEnd);
   });
 
+  async function handleChatFirst() {
+    setLoading(true);
+    try {
+      const res = await api.startItemChat(
+        currentListing.id,
+        notes ? `Hi! I'd like to borrow "${currentListing.title}". Note: ${notes}` : undefined
+      );
+      if (res.success && res.conversationId) {
+        onClose();
+        openChat(res.conversationId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open chat with owner.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleBookingSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -47,17 +68,19 @@ export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps)
 
     setLoading(true);
     try {
-      await api.createBooking({
+      const res = await api.createBooking({
         listingId: currentListing.id,
         startDate,
         endDate,
         borrowerNotes: notes
       });
       setSuccess(true);
+      if (res.conversationId) {
+        setCreatedConvId(res.conversationId);
+      }
       setTimeout(() => {
         onSuccess();
-        onClose();
-      }, 1500);
+      }, 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit booking request.");
     } finally {
@@ -106,8 +129,22 @@ export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps)
             </div>
             <h4 style={{ fontSize: 18, fontWeight: 700, color: "var(--primary)" }}>Request Sent!</h4>
             <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 6 }}>
-              The owner ({currentListing.owner_name}) has received your booking request. Check My Borrowings for updates.
+              The owner ({currentListing.owner_name}) has received your booking request.
             </p>
+            {createdConvId && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  openChat(createdConvId);
+                }}
+                className="bb-btn-primary"
+                style={{ marginTop: 16, padding: "9px 18px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <MessageSquare size={16} />
+                <span>Open Chat & Coordinate Pickup</span>
+              </button>
+            )}
           </div>
         ) : (
           <form onSubmit={handleBookingSubmit}>
@@ -230,23 +267,33 @@ export function BookingModal({ listing, onClose, onSuccess }: BookingModalProps)
             </div>
 
             {/* Buttons */}
-            <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="bb-btn-secondary"
-                style={{ flex: 1 }}
+                style={{ flex: 1, minWidth: 80 }}
                 onClick={onClose}
                 disabled={loading}
               >
                 Cancel
               </button>
               <button
+                type="button"
+                className="bb-btn-primary"
+                style={{ flex: 1.5, minWidth: 140, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                onClick={handleChatFirst}
+                disabled={loading}
+              >
+                <MessageSquare size={15} />
+                <span>Chat First</span>
+              </button>
+              <button
                 type="submit"
                 className="bb-btn-coral"
-                style={{ flex: 2 }}
+                style={{ flex: 2, minWidth: 160 }}
                 disabled={loading || hasConflict}
               >
-                {loading ? "Sending Request..." : "Confirm & Send Request"}
+                {loading ? "Sending..." : "Confirm & Send Request"}
               </button>
             </div>
           </form>

@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useRef } from "react";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import type { Conversation, ChatMessage } from "../types";
+import type { Conversation, ChatMessage, Listing } from "../types";
+import { StatusBadge } from "../components/StatusBadge";
+import { BookingModal } from "../components/BookingModal";
 import { 
   MessageSquare, 
   Send, 
   ShieldAlert, 
   ArrowLeft,
-  Flag
+  Flag,
+  Check,
+  CheckCircle,
+  Package,
+  MapPin,
+  X
 } from "lucide-react";
 
 export function ChatsPage() {
@@ -20,8 +27,10 @@ export function ChatsPage() {
   const [loadingConv, setLoadingConv] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState(false);
   const [sending, setSending] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
+  const [bookingListing, setBookingListing] = useState<Listing | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +59,7 @@ export function ChatsPage() {
     }, 3500);
 
     return () => clearInterval(interval);
-  }, [selectedConv]);
+  }, [selectedConv?.id]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -80,6 +89,9 @@ export function ChatsPage() {
       const res = await api.getMessages(convId);
       if (res.success) {
         setMessages(res.messages);
+        if (res.conversation) {
+          setSelectedConv((prev) => (prev ? { ...prev, ...res.conversation } : res.conversation));
+        }
       }
     } catch (err) {
       console.error("Fetch messages error:", err);
@@ -108,6 +120,94 @@ export function ChatsPage() {
     }
   }
 
+  // Booking actions from inside chat
+  async function handleApproveBooking(bookingId: number) {
+    setActionLoading(true);
+    try {
+      await api.updateBookingStatus(bookingId, "accepted");
+      await fetchMessages(selectedConv!.id);
+      await loadConversations();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to approve request.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDeclineBooking(bookingId: number) {
+    if (!confirm("Are you sure you want to decline this borrow request?")) return;
+    setActionLoading(true);
+    try {
+      await api.updateBookingStatus(bookingId, "declined");
+      await fetchMessages(selectedConv!.id);
+      await loadConversations();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to decline request.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleConfirmPickup(bookingId: number) {
+    setActionLoading(true);
+    try {
+      const res = await api.confirmPickup(bookingId);
+      alert(res.message);
+      await fetchMessages(selectedConv!.id);
+      await loadConversations();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to confirm pickup.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleConfirmReturn(bookingId: number) {
+    setActionLoading(true);
+    try {
+      const res = await api.confirmReturn(bookingId);
+      alert(res.message);
+      await fetchMessages(selectedConv!.id);
+      await loadConversations();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to confirm return.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleAdjustPrice(bookingId: number, currentPrice: number | string) {
+    const input = prompt("Enter negotiated total rental price for this booking (₹):", String(currentPrice));
+    if (input === null) return;
+    const price = parseFloat(input);
+    if (isNaN(price) || price < 0) {
+      alert("Invalid price.");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.negotiatePrice(bookingId, price);
+      await fetchMessages(selectedConv!.id);
+      await loadConversations();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update price.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleOpenBookingModal() {
+    if (!selectedConv?.item?.id) return;
+    try {
+      const res = await api.getListing(selectedConv.item.id);
+      if (res.success && res.listing) {
+        setBookingListing(res.listing);
+      }
+    } catch (err) {
+      alert("Failed to load item for booking.");
+    }
+  }
+
   async function handleReportSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedConv || !reportReason) return;
@@ -132,7 +232,7 @@ export function ChatsPage() {
           Campus Messages & Coordination
         </h1>
         <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginTop: 2 }}>
-          Private conversations linked to verified item bookings and academic support.
+          Chat personally to negotiate price and meeting spots. Both parties confirm handover & return right here.
         </p>
       </div>
 
@@ -142,7 +242,7 @@ export function ChatsPage() {
           display: "grid",
           gridTemplateColumns: "320px 1fr",
           minHeight: 560,
-          maxHeight: "75vh",
+          maxHeight: "78vh",
           overflow: "hidden"
         }}
       >
@@ -183,7 +283,7 @@ export function ChatsPage() {
               <div style={{ padding: 28, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                 <p style={{ fontWeight: 600 }}>No conversations yet.</p>
                 <p style={{ fontSize: 12, marginTop: 4 }}>
-                  Chats are created when a borrow request or academic help offer is accepted.
+                  Click "Chat" on any item in the marketplace or from incoming requests to start negotiating!
                 </p>
               </div>
             ) : (
@@ -207,7 +307,7 @@ export function ChatsPage() {
                         {partnerName}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>
-                        {c.type === "booking" ? "Item" : "Help"}
+                        {c.booking_status ? <StatusBadge status={c.booking_status as any} /> : "Item Inquiry"}
                       </span>
                     </div>
 
@@ -247,7 +347,7 @@ export function ChatsPage() {
               {/* Chat Header */}
               <div
                 style={{
-                  padding: "14px 18px",
+                  padding: "12px 18px",
                   borderBottom: "1px solid var(--border-color)",
                   display: "flex",
                   alignItems: "center",
@@ -271,10 +371,10 @@ export function ChatsPage() {
 
                   <div>
                     <h3 style={{ fontSize: 15.5, fontWeight: 700, color: "var(--primary)" }}>
-                      {selectedConv.other_user?.name || "Student"}
+                      {selectedConv.partner?.name || selectedConv.other_user?.name || "Student"}
                     </h3>
                     <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      Linked to: <strong>{selectedConv.item_title || selectedConv.help_title || "Discussion"}</strong>
+                      Item: <strong>{selectedConv.item?.title || selectedConv.item_title || selectedConv.help_title || "Campus Discussion"}</strong>
                     </p>
                   </div>
                 </div>
@@ -298,10 +398,202 @@ export function ChatsPage() {
                 </button>
               </div>
 
+              {/* ITEM & BOOKING NEGOTIATION / STATUS PINNED BAR */}
+              {selectedConv.item && (
+                <div
+                  style={{
+                    background: "var(--bg-canvas)",
+                    borderBottom: "1px solid var(--border-color)",
+                    padding: "10px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 10
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", overflow: "hidden", background: "var(--bg-surface-soft)", flexShrink: 0 }}>
+                      {selectedConv.item.image_url ? (
+                        <img
+                          src={getAssetUrl(selectedConv.item.image_url)}
+                          alt={selectedConv.item.title}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-subtle)" }}>
+                          <Package size={20} />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--primary)", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>{selectedConv.item.title}</span>
+                        {selectedConv.booking && <StatusBadge status={selectedConv.booking.status} />}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 10, alignItems: "center" }}>
+                        <span>₹{selectedConv.item.rental_price_per_day}/day</span>
+                        <span>•</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                          <MapPin size={11} color="var(--accent-coral)" />
+                          {selectedConv.item.pickup_location}
+                        </span>
+                        {selectedConv.booking && (
+                          <>
+                            <span>•</span>
+                            <span style={{ fontWeight: 700, color: "var(--primary)" }}>
+                              Total: ₹{selectedConv.booking.total_price}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions according to booking state and user role */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {/* Scenario 1: Inquiry before booking */}
+                    {!selectedConv.booking && selectedConv.userRole === "borrower" && (
+                      <button
+                        onClick={handleOpenBookingModal}
+                        className="bb-btn-coral"
+                        style={{ padding: "6px 12px", fontSize: 12.5 }}
+                      >
+                        Request to Borrow
+                      </button>
+                    )}
+
+                    {/* Scenario 2: Pending booking */}
+                    {selectedConv.booking && selectedConv.booking.status === "pending" && (
+                      <>
+                        {selectedConv.userRole === "lender" ? (
+                          <>
+                            <button
+                              onClick={() => handleAdjustPrice(selectedConv.booking!.id, selectedConv.booking!.total_price)}
+                              className="bb-btn-secondary"
+                              style={{ padding: "6px 10px", fontSize: 12 }}
+                              disabled={actionLoading}
+                            >
+                              Adjust Price
+                            </button>
+                            <button
+                              onClick={() => handleApproveBooking(selectedConv.booking!.id)}
+                              className="bb-btn-primary"
+                              style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                              disabled={actionLoading}
+                            >
+                              <Check size={14} />
+                              <span>Approve Request</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeclineBooking(selectedConv.booking!.id)}
+                              className="bb-btn-secondary"
+                              style={{ padding: "6px 10px", fontSize: 12, color: "var(--accent-coral-text)" }}
+                              disabled={actionLoading}
+                            >
+                              <X size={14} />
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            ⏳ Waiting for owner to approve or negotiate terms...
+                          </span>
+                        )}
+                      </>
+                    )}
+
+                    {/* Scenario 3: Accepted (Handover confirmation) */}
+                    {selectedConv.booking && selectedConv.booking.status === "accepted" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {selectedConv.userRole === "borrower" ? (
+                          !selectedConv.booking.borrower_confirmed_pickup ? (
+                            <button
+                              onClick={() => handleConfirmPickup(selectedConv.booking!.id)}
+                              className="bb-btn-coral"
+                              style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                              disabled={actionLoading}
+                            >
+                              <Check size={14} />
+                              <span>Confirm Item Received</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--accent-green-text)", fontWeight: 600 }}>
+                              ✓ You confirmed pickup. Waiting for owner...
+                            </span>
+                          )
+                        ) : (
+                          !selectedConv.booking.lender_confirmed_pickup ? (
+                            <button
+                              onClick={() => handleConfirmPickup(selectedConv.booking!.id)}
+                              className="bb-btn-coral"
+                              style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                              disabled={actionLoading}
+                            >
+                              <Check size={14} />
+                              <span>Confirm Handed Over</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--accent-green-text)", fontWeight: 600 }}>
+                              ✓ You confirmed handover. Waiting for borrower...
+                            </span>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {/* Scenario 4: Active (Return confirmation) */}
+                    {selectedConv.booking && selectedConv.booking.status === "active" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {selectedConv.userRole === "borrower" ? (
+                          !selectedConv.booking.borrower_confirmed_return ? (
+                            <button
+                              onClick={() => handleConfirmReturn(selectedConv.booking!.id)}
+                              className="bb-btn-yellow"
+                              style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                              disabled={actionLoading}
+                            >
+                              <CheckCircle size={14} />
+                              <span>Confirm Item Returned</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--accent-green-text)", fontWeight: 600 }}>
+                              ✓ You confirmed return. Waiting for owner receipt...
+                            </span>
+                          )
+                        ) : (
+                          !selectedConv.booking.lender_confirmed_return ? (
+                            <button
+                              onClick={() => handleConfirmReturn(selectedConv.booking!.id)}
+                              className="bb-btn-yellow"
+                              style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                              disabled={actionLoading}
+                            >
+                              <CheckCircle size={14} />
+                              <span>Confirm Item Received Back</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--accent-green-text)", fontWeight: 600 }}>
+                              ✓ You confirmed receipt. Waiting for borrower...
+                            </span>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {/* Scenario 5: Completed */}
+                    {selectedConv.booking && selectedConv.booking.status === "completed" && (
+                      <span style={{ fontSize: 12, color: "var(--accent-green-text)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                        <CheckCircle size={14} /> Completed & Returned
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Security Banner */}
               <div
                 style={{
-                  padding: "6px 16px",
+                  padding: "5px 16px",
                   background: "var(--bg-canvas)",
                   borderBottom: "1px solid var(--border-color)",
                   fontSize: 11.5,
@@ -311,8 +603,8 @@ export function ChatsPage() {
                   gap: 6
                 }}
               >
-                <ShieldAlert size={14} color="var(--primary)" />
-                <span>Private student chat. Actively monitored by SRMIST Campus Administration (SM 471) for campus safety, fraud prevention, and academic integrity.</span>
+                <ShieldAlert size={13} color="var(--primary)" />
+                <span>Private verified SRM student chat. Coordinate meeting place & negotiate respectfully.</span>
               </div>
 
               {/* Message List */}
@@ -333,7 +625,7 @@ export function ChatsPage() {
                   </div>
                 ) : messages.length === 0 ? (
                   <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13, padding: 32 }}>
-                    Start the conversation! Coordinate pickup spot, return timing, or exchange details.
+                    Start the conversation! Coordinate pickup spot, return timing, or negotiate price.
                   </div>
                 ) : (
                   messages.map((m) => {
@@ -362,7 +654,8 @@ export function ChatsPage() {
                             lineHeight: 1.5,
                             boxShadow: "var(--shadow-sm)",
                             border: isMe ? "none" : "1px solid var(--border-color)",
-                            wordBreak: "break-word"
+                            wordBreak: "break-word",
+                            whiteSpace: "pre-line"
                           }}
                         >
                           {m.message_text}
@@ -391,7 +684,7 @@ export function ChatsPage() {
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Type a message (e.g. Can we meet at Library entrance at 4 PM?)..."
+                  placeholder="Type a message (e.g. Can we meet at Library entrance? Or can you do ₹80?)..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   style={{ borderRadius: "var(--radius-md)" }}
@@ -426,6 +719,19 @@ export function ChatsPage() {
           )}
         </div>
       </div>
+
+      {/* Booking Modal if triggered from chat */}
+      {bookingListing && (
+        <BookingModal
+          listing={bookingListing}
+          onClose={() => setBookingListing(null)}
+          onSuccess={() => {
+            setBookingListing(null);
+            loadConversations();
+            if (selectedConv) fetchMessages(selectedConv.id);
+          }}
+        />
+      )}
 
       {/* Report Modal */}
       {showReportModal && (

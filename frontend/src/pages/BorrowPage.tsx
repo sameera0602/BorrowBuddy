@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api, getAssetUrl } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import type { Listing } from "../types";
 import { BookingModal } from "../components/BookingModal";
 import { 
@@ -7,10 +8,12 @@ import {
   MapPin, 
   Package, 
   X, 
-  User 
+  User,
+  MessageSquare 
 } from "lucide-react";
 
 export function BorrowPage() {
+  const { user, openChat } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -18,6 +21,7 @@ export function BorrowPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeItem, setActiveItem] = useState<Listing | null>(null);
   const [bookingItem, setBookingItem] = useState<Listing | null>(null);
+  const [chatLoading, setChatLoading] = useState<number | null>(null);
 
   const categories = [
     "All",
@@ -50,6 +54,25 @@ export function BorrowPage() {
       console.error("Fetch listings error:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleChatWithOwner(item: Listing, e?: React.MouseEvent) {
+    if (e) e.stopPropagation();
+    if (user && item.owner_id === user.id) {
+      alert("This is your own listing!");
+      return;
+    }
+    setChatLoading(item.id);
+    try {
+      const res = await api.startItemChat(item.id);
+      if (res.success && res.conversationId) {
+        openChat(res.conversationId);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to open chat with owner.");
+    } finally {
+      setChatLoading(null);
     }
   }
 
@@ -251,16 +274,29 @@ export function BorrowPage() {
                     </span>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBookingItem(item);
-                    }}
-                    className="bb-btn-coral"
-                    style={{ padding: "8px 16px", fontSize: 13 }}
-                  >
-                    Borrow
-                  </button>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button
+                      onClick={(e) => handleChatWithOwner(item, e)}
+                      className="bb-btn-secondary"
+                      style={{ padding: "7px 11px", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                      title="Chat & Negotiate personally"
+                      disabled={chatLoading === item.id}
+                    >
+                      <MessageSquare size={14} />
+                      <span>{chatLoading === item.id ? "..." : "Chat"}</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBookingItem(item);
+                      }}
+                      className="bb-btn-coral"
+                      style={{ padding: "7px 14px", fontSize: 12.5 }}
+                    >
+                      Borrow
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -373,19 +409,29 @@ export function BorrowPage() {
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="bb-btn-secondary"
-                style={{ flex: 1 }}
+                style={{ flex: 1, minWidth: 90 }}
                 onClick={() => setActiveItem(null)}
               >
                 Close
               </button>
               <button
                 type="button"
+                className="bb-btn-primary"
+                style={{ flex: 2, minWidth: 160, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                onClick={() => handleChatWithOwner(activeItem)}
+                disabled={chatLoading === activeItem.id}
+              >
+                <MessageSquare size={16} />
+                <span>{chatLoading === activeItem.id ? "Opening Chat..." : "Chat & Negotiate"}</span>
+              </button>
+              <button
+                type="button"
                 className="bb-btn-coral"
-                style={{ flex: 2 }}
+                style={{ flex: 2, minWidth: 160 }}
                 onClick={() => {
                   setBookingItem(activeItem);
                   setActiveItem(null);

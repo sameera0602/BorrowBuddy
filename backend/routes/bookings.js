@@ -43,7 +43,7 @@ router.post("/", requireAuth, async function (req, res) {
 
     // Fetch listing
     const [listings] = await db.execute(
-      "SELECT id, owner_id, title, rental_price_per_day, status FROM listings WHERE id = ?",
+      "SELECT id, owner_id, title, rental_price_per_day, pickup_location, status FROM listings WHERE id = ?",
       [parsedListingId]
     );
 
@@ -97,10 +97,45 @@ router.post("/", requireAuth, async function (req, res) {
       ]
     );
 
+    const newBookingId = result.insertId;
+
+    // Automatically create or link a personal conversation between borrower and owner for this request
+    let conversationId = null;
+    const [existingConvs] = await db.execute(
+      `SELECT id FROM conversations 
+       WHERE ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?))
+       AND (listing_id = ? OR booking_id IN (SELECT id FROM bookings WHERE listing_id = ?))
+       ORDER BY updated_at DESC LIMIT 1`,
+      [req.user.id, listing.owner_id, listing.owner_id, req.user.id, parsedListingId, parsedListingId]
+    );
+
+    if (existingConvs.length > 0) {
+      conversationId = existingConvs[0].id;
+      await db.execute(
+        "UPDATE conversations SET booking_id = ?, listing_id = ?, updated_at = NOW() WHERE id = ?",
+        [newBookingId, parsedListingId, conversationId]
+      );
+    } else {
+      const [cRes] = await db.execute(
+        `INSERT INTO conversations (type, booking_id, listing_id, user1_id, user2_id)
+         VALUES ('booking', ?, ?, ?, ?)`,
+        [newBookingId, parsedListingId, req.user.id, listing.owner_id]
+      );
+      conversationId = cRes.insertId;
+    }
+
+    // Post request summary into the conversation
+    const msgText = `📅 Borrow Request Submitted for "${listing.title}"\nDates: ${formattedStart} to ${formattedEnd} (${rentalDays} day${rentalDays > 1 ? "s" : ""})\nTotal Estimated: ₹${totalPrice}\nPickup Spot: ${listing.pickup_location}\n${borrowerNotes ? "Borrower Note: " + borrowerNotes : "Hi! I sent a borrow request. Let's negotiate and coordinate pickup details here!"}`;
+    await db.execute(
+      "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+      [conversationId, req.user.id, msgText]
+    );
+
     return res.status(201).json({
       success: true,
-      message: "Borrow request submitted! The owner has been notified and can review your request.",
-      bookingId: result.insertId,
+      message: "Borrow request submitted! You can now chat personally with the owner to negotiate and coordinate.",
+      bookingId: newBookingId,
+      conversationId,
       rentalDays,
       totalPrice
     });
@@ -119,21 +154,42 @@ router.get("/my-borrowings", requireAuth, async function (req, res) {
       `SELECT 
         b.id, b.listing_id, b.start_date, b.end_date, b.total_price, b.status,
         b.borrower_notes, b.owner_response_notes, b.created_at,
+        b.borrower_confirmed_pickup, b.lender_confirmed_pickup,
+        b.borrower_confirmed_return, b.lender_confirmed_return,
+        b.agreed_price,
         l.title AS item_title, l.category, l.pickup_location, l.rental_price_per_day, l.deposit_amount,
         u.full_name AS owner_name, u.college_email AS owner_email,
         c.id AS conversation_id
        FROM bookings b
        JOIN listings l ON b.listing_id = l.id
        JOIN users u ON b.owner_id = u.id
-       LEFT JOIN conversations c ON c.booking_id = b.id
+       LEFT JOIN conversations c ON (
+         c.booking_id = b.id OR 
+         (c.listing_id = b.listing_id AND ((c.user1_id = b.borrower_id AND c.user2_id = b.owner_id) OR (c.user1_id = b.owner_id AND c.user2_id = b.borrower_id)))
+       )
        WHERE b.borrower_id = ?
        ORDER BY b.created_at DESC`,
       [req.user.id]
     );
 
-    // Fetch primary images
-    if (borrowings.length > 0) {
-      const listingIds = [...new Set(borrowings.map((b) => b.listing_id))];
+    // Fetch primary images and deduplicate conversations if any
+    const processed = [];
+    const seenIds = new Set();
+
+    for (const b of borrowings) {
+      if (seenIds.has(b.id)) continue;
+      seenIds.add(b.id);
+
+      b.borrower_confirmed_pickup = Boolean(b.borrower_confirmed_pickup);
+      b.lender_confirmed_pickup = Boolean(b.lender_confirmed_pickup);
+      b.borrower_confirmed_return = Boolean(b.borrower_confirmed_return);
+      b.lender_confirmed_return = Boolean(b.lender_confirmed_return);
+
+      processed.push(b);
+    }
+
+    if (processed.length > 0) {
+      const listingIds = [...new Set(processed.map((b) => b.listing_id))];
       const placeholders = listingIds.map(() => "?").join(",");
       const [images] = await db.query(
         `SELECT listing_id, image_url FROM listing_images WHERE listing_id IN (${placeholders}) AND is_primary = TRUE`,
@@ -142,12 +198,12 @@ router.get("/my-borrowings", requireAuth, async function (req, res) {
 
       const imageMap = {};
       images.forEach((img) => (imageMap[img.listing_id] = img.image_url));
-      borrowings.forEach((b) => (b.image_url = imageMap[b.listing_id] || null));
+      processed.forEach((b) => (b.image_url = imageMap[b.listing_id] || null));
     }
 
     return res.json({
       success: true,
-      borrowings
+      borrowings: processed
     });
   } catch (error) {
     console.error("Fetch borrowings error:", error.message);
@@ -165,17 +221,37 @@ router.get("/my-lending", requireAuth, async function (req, res) {
       `SELECT 
         b.id, b.listing_id, b.start_date, b.end_date, b.total_price, b.status,
         b.borrower_notes, b.owner_response_notes, b.created_at,
-        l.title AS item_title, l.category, l.pickup_location,
+        b.borrower_confirmed_pickup, b.lender_confirmed_pickup,
+        b.borrower_confirmed_return, b.lender_confirmed_return,
+        b.agreed_price,
+        l.title AS item_title, l.category, l.pickup_location, l.rental_price_per_day,
         u.full_name AS borrower_name, u.college_email AS borrower_email,
         c.id AS conversation_id
        FROM bookings b
        JOIN listings l ON b.listing_id = l.id
        JOIN users u ON b.borrower_id = u.id
-       LEFT JOIN conversations c ON c.booking_id = b.id
+       LEFT JOIN conversations c ON (
+         c.booking_id = b.id OR 
+         (c.listing_id = b.listing_id AND ((c.user1_id = b.borrower_id AND c.user2_id = b.owner_id) OR (c.user1_id = b.owner_id AND c.user2_id = b.borrower_id)))
+       )
        WHERE b.owner_id = ?
        ORDER BY b.created_at DESC`,
       [req.user.id]
     );
+
+    const processedRequests = [];
+    const seenReqIds = new Set();
+    for (const r of incomingRequests) {
+      if (seenReqIds.has(r.id)) continue;
+      seenReqIds.add(r.id);
+
+      r.borrower_confirmed_pickup = Boolean(r.borrower_confirmed_pickup);
+      r.lender_confirmed_pickup = Boolean(r.lender_confirmed_pickup);
+      r.borrower_confirmed_return = Boolean(r.borrower_confirmed_return);
+      r.lender_confirmed_return = Boolean(r.lender_confirmed_return);
+
+      processedRequests.push(r);
+    }
 
     // 2. All my listings
     const [myListings] = await db.execute(
@@ -210,7 +286,7 @@ router.get("/my-lending", requireAuth, async function (req, res) {
 
     return res.json({
       success: true,
-      incomingRequests,
+      incomingRequests: processedRequests,
       myListings
     });
   } catch (error) {
@@ -220,7 +296,7 @@ router.get("/my-lending", requireAuth, async function (req, res) {
 });
 
 // ==========================================
-// 4. UPDATE BOOKING STATUS (Accept, Decline, Cancel, Complete)
+// 4. UPDATE BOOKING STATUS (Accept, Decline, Cancel)
 // ==========================================
 router.patch("/:id/status", requireAuth, async function (req, res) {
   let connection;
@@ -237,9 +313,11 @@ router.patch("/:id/status", requireAuth, async function (req, res) {
     await connection.beginTransaction();
 
     const [rows] = await connection.execute(
-      `SELECT id, listing_id, borrower_id, owner_id, start_date, end_date, status
-       FROM bookings
-       WHERE id = ?
+      `SELECT b.id, b.listing_id, b.borrower_id, b.owner_id, b.start_date, b.end_date, b.status,
+              l.title AS item_title
+       FROM bookings b
+       JOIN listings l ON b.listing_id = l.id
+       WHERE b.id = ?
        FOR UPDATE`,
       [bookingId]
     );
@@ -294,12 +372,7 @@ router.patch("/:id/status", requireAuth, async function (req, res) {
         await connection.rollback();
         return res.status(400).json({ success: false, message: "This booking can no longer be cancelled." });
       }
-    } else if (newStatus === "active") {
-      if (booking.owner_id !== req.user.id && booking.borrower_id !== req.user.id) {
-        await connection.rollback();
-        return res.status(403).json({ success: false, message: "Unauthorized." });
-      }
-    } else if (newStatus === "completed") {
+    } else if (newStatus === "active" || newStatus === "completed") {
       if (booking.owner_id !== req.user.id && booking.borrower_id !== req.user.id && req.user.role !== "admin") {
         await connection.rollback();
         return res.status(403).json({ success: false, message: "Unauthorized." });
@@ -314,35 +387,45 @@ router.patch("/:id/status", requireAuth, async function (req, res) {
       [newStatus, responseNotes ? String(responseNotes).trim() : null, bookingId]
     );
 
-    // If accepted, automatically ensure a private conversation exists and send confirmation message
+    // If accepted or declined, update / notify in conversation
     let conversationId = null;
-    if (newStatus === "accepted") {
-      const [existingConv] = await connection.execute(
-        "SELECT id FROM conversations WHERE booking_id = ? LIMIT 1",
-        [bookingId]
+    const [existingConv] = await connection.execute(
+      `SELECT id FROM conversations 
+       WHERE booking_id = ? OR (listing_id = ? AND ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)))
+       ORDER BY updated_at DESC LIMIT 1`,
+      [bookingId, booking.listing_id, booking.borrower_id, booking.owner_id, booking.owner_id, booking.borrower_id]
+    );
+
+    if (existingConv.length > 0) {
+      conversationId = existingConv[0].id;
+      await connection.execute(
+        "UPDATE conversations SET booking_id = ?, updated_at = NOW() WHERE id = ?",
+        [bookingId, conversationId]
       );
+    } else {
+      const [convResult] = await connection.execute(
+        `INSERT INTO conversations (type, booking_id, listing_id, user1_id, user2_id)
+         VALUES ('booking', ?, ?, ?, ?)`,
+        [bookingId, booking.listing_id, booking.borrower_id, booking.owner_id]
+      );
+      conversationId = convResult.insertId;
+    }
 
-      if (existingConv.length > 0) {
-        conversationId = existingConv[0].id;
-      } else {
-        const [convResult] = await connection.execute(
-          `INSERT INTO conversations (type, booking_id, user1_id, user2_id)
-           VALUES ('booking', ?, ?, ?)`,
-          [bookingId, booking.borrower_id, booking.owner_id]
-        );
-        conversationId = convResult.insertId;
+    let statusMsg = "";
+    if (newStatus === "accepted") {
+      statusMsg = `✅ Request Accepted by Owner! You can now meet to hand over the item. Both parties must confirm pickup in the app once received.`;
+    } else if (newStatus === "declined") {
+      statusMsg = `❌ Request Declined by Owner.${responseNotes ? " Reason: " + responseNotes : ""}`;
+    } else if (newStatus === "cancelled") {
+      statusMsg = `⚠️ Borrow request was cancelled by the borrower.`;
+    }
 
-        // Add initial system message
-        await connection.execute(
-          `INSERT INTO messages (conversation_id, sender_id, message_text)
-           VALUES (?, ?, ?)`,
-          [
-            conversationId,
-            booking.owner_id,
-            "Hi! Your borrow request has been accepted. Use this chat to coordinate pickup and return on campus."
-          ]
-        );
-      }
+    if (statusMsg) {
+      await connection.execute(
+        `INSERT INTO messages (conversation_id, sender_id, message_text)
+         VALUES (?, ?, ?)`,
+        [conversationId, req.user.id, statusMsg]
+      );
     }
 
     await connection.commit();
@@ -359,6 +442,277 @@ router.patch("/:id/status", requireAuth, async function (req, res) {
     return res.status(500).json({ success: false, message: "Could not update booking status." });
   } finally {
     if (connection) connection.release();
+  }
+});
+
+// ==========================================
+// 5. DUAL-CONFIRMATION HANDOVER (CONFIRM PICKUP)
+// Both borrower and lender must confirm handover
+// ==========================================
+router.post("/:id/confirm-pickup", requireAuth, async function (req, res) {
+  let connection;
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT b.*, l.title AS item_title, 
+              u_bor.full_name AS borrower_name, u_own.full_name AS owner_name
+       FROM bookings b
+       JOIN listings l ON b.listing_id = l.id
+       JOIN users u_bor ON b.borrower_id = u_bor.id
+       JOIN users u_own ON b.owner_id = u_own.id
+       WHERE b.id = ? FOR UPDATE`,
+      [bookingId]
+    );
+
+    if (rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found." });
+    }
+
+    const booking = rows[0];
+
+    if (booking.borrower_id !== userId && booking.owner_id !== userId && req.user.role !== "admin") {
+      await connection.rollback();
+      return res.status(403).json({ success: false, message: "Unauthorized to confirm pickup for this booking." });
+    }
+
+    if (booking.status !== "accepted" && booking.status !== "active") {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot confirm pickup for booking in '${booking.status}' status. The owner must accept the request first.` 
+      });
+    }
+
+    const isBorrower = booking.borrower_id === userId;
+    const isOwner = booking.owner_id === userId;
+
+    let newBorrowerPickup = Boolean(booking.borrower_confirmed_pickup);
+    let newLenderPickup = Boolean(booking.lender_confirmed_pickup);
+
+    if (isBorrower) newBorrowerPickup = true;
+    if (isOwner) newLenderPickup = true;
+
+    const bothConfirmed = Boolean(newBorrowerPickup && newLenderPickup);
+    const newStatus = bothConfirmed ? "active" : booking.status;
+
+    await connection.execute(
+      `UPDATE bookings 
+       SET borrower_confirmed_pickup = ?, lender_confirmed_pickup = ?, status = ?
+       WHERE id = ?`,
+      [newBorrowerPickup ? 1 : 0, newLenderPickup ? 1 : 0, newStatus, bookingId]
+    );
+
+    // Post to conversation
+    const [convRows] = await connection.execute(
+      `SELECT id FROM conversations 
+       WHERE booking_id = ? OR (listing_id = ? AND ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)))
+       ORDER BY updated_at DESC LIMIT 1`,
+      [bookingId, booking.listing_id, booking.borrower_id, booking.owner_id, booking.owner_id, booking.borrower_id]
+    );
+
+    if (convRows.length > 0) {
+      const convId = convRows[0].id;
+      let msgText = "";
+      if (bothConfirmed) {
+        msgText = `🤝 Handover Confirmed by BOTH parties!\n"${booking.item_title}" is now actively borrowed. Please return it on time.`;
+      } else if (isBorrower) {
+        msgText = `📦 Borrower (${booking.borrower_name}) confirmed receiving "${booking.item_title}". Waiting for Lender (${booking.owner_name}) to confirm handover.`;
+      } else {
+        msgText = `📦 Lender (${booking.owner_name}) confirmed handover of "${booking.item_title}". Waiting for Borrower (${booking.borrower_name}) to confirm receipt.`;
+      }
+      await connection.execute(
+        "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+        [convId, userId, msgText]
+      );
+      await connection.execute("UPDATE conversations SET updated_at = NOW() WHERE id = ?", [convId]);
+    }
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: bothConfirmed 
+        ? "Both parties confirmed pickup! Item is now actively borrowed." 
+        : "Pickup confirmed by you. Waiting for the other party to confirm.",
+      status: newStatus,
+      borrower_confirmed_pickup: newBorrowerPickup,
+      lender_confirmed_pickup: newLenderPickup,
+      bothConfirmed
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("Confirm pickup error:", error.message);
+    return res.status(500).json({ success: false, message: "Could not confirm pickup." });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// ==========================================
+// 6. DUAL-CONFIRMATION RETURN (CONFIRM RETURN)
+// Both borrower and lender must confirm return
+// ==========================================
+router.post("/:id/confirm-return", requireAuth, async function (req, res) {
+  let connection;
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    const userId = req.user.id;
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT b.*, l.title AS item_title,
+              u_bor.full_name AS borrower_name, u_own.full_name AS owner_name
+       FROM bookings b
+       JOIN listings l ON b.listing_id = l.id
+       JOIN users u_bor ON b.borrower_id = u_bor.id
+       JOIN users u_own ON b.owner_id = u_own.id
+       WHERE b.id = ? FOR UPDATE`,
+      [bookingId]
+    );
+
+    if (rows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Booking not found." });
+    }
+
+    const booking = rows[0];
+
+    if (booking.borrower_id !== userId && booking.owner_id !== userId && req.user.role !== "admin") {
+      await connection.rollback();
+      return res.status(403).json({ success: false, message: "Unauthorized to confirm return for this booking." });
+    }
+
+    if (booking.status !== "active") {
+      await connection.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot confirm return for booking in '${booking.status}' status. Item must be in active status.` 
+      });
+    }
+
+    const isBorrower = booking.borrower_id === userId;
+    const isOwner = booking.owner_id === userId;
+
+    let newBorrowerReturn = Boolean(booking.borrower_confirmed_return);
+    let newLenderReturn = Boolean(booking.lender_confirmed_return);
+
+    if (isBorrower) newBorrowerReturn = true;
+    if (isOwner) newLenderReturn = true;
+
+    const bothConfirmed = Boolean(newBorrowerReturn && newLenderReturn);
+    const newStatus = bothConfirmed ? "completed" : "active";
+
+    await connection.execute(
+      `UPDATE bookings 
+       SET borrower_confirmed_return = ?, lender_confirmed_return = ?, status = ?
+       WHERE id = ?`,
+      [newBorrowerReturn ? 1 : 0, newLenderReturn ? 1 : 0, newStatus, bookingId]
+    );
+
+    // If both confirmed, release the item back to approved/available status
+    if (bothConfirmed) {
+      await connection.execute(
+        "UPDATE listings SET status = 'approved' WHERE id = ?",
+        [booking.listing_id]
+      );
+    }
+
+    // Post to conversation
+    const [convRows] = await connection.execute(
+      `SELECT id FROM conversations 
+       WHERE booking_id = ? OR (listing_id = ? AND ((user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)))
+       ORDER BY updated_at DESC LIMIT 1`,
+      [bookingId, booking.listing_id, booking.borrower_id, booking.owner_id, booking.owner_id, booking.borrower_id]
+    );
+
+    if (convRows.length > 0) {
+      const convId = convRows[0].id;
+      let msgText = "";
+      if (bothConfirmed) {
+        msgText = `🎉 Return Confirmed by BOTH parties!\n"${booking.item_title}" has been safely returned to ${booking.owner_name}. The rental is now completed. Thank you!`;
+      } else if (isBorrower) {
+        msgText = `🔄 Borrower (${booking.borrower_name}) marked "${booking.item_title}" as returned. Waiting for Lender (${booking.owner_name}) to confirm receipt.`;
+      } else {
+        msgText = `🔄 Lender (${booking.owner_name}) confirmed receiving back "${booking.item_title}". Waiting for Borrower (${booking.borrower_name}) to confirm return.`;
+      }
+      await connection.execute(
+        "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+        [convId, userId, msgText]
+      );
+      await connection.execute("UPDATE conversations SET updated_at = NOW() WHERE id = ?", [convId]);
+    }
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: bothConfirmed 
+        ? "Both parties confirmed return! Rental completed." 
+        : "Return confirmed by you. Waiting for the other party to confirm.",
+      status: newStatus,
+      borrower_confirmed_return: newBorrowerReturn,
+      lender_confirmed_return: newLenderReturn,
+      bothConfirmed
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("Confirm return error:", error.message);
+    return res.status(500).json({ success: false, message: "Could not confirm return." });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// ==========================================
+// 7. NEGOTIATE PRICE / DETAILS
+// ==========================================
+router.post("/:id/negotiate-price", requireAuth, async function (req, res) {
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    const { agreedPrice } = req.body;
+    const price = parseFloat(agreedPrice);
+
+    if (isNaN(price) || price < 0) {
+      return res.status(400).json({ success: false, message: "Valid agreed price is required." });
+    }
+
+    const [rows] = await db.execute("SELECT id, owner_id, borrower_id, listing_id FROM bookings WHERE id = ?", [bookingId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: "Booking not found." });
+
+    const booking = rows[0];
+    if (booking.owner_id !== req.user.id && booking.borrower_id !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized." });
+    }
+
+    await db.execute(
+      "UPDATE bookings SET agreed_price = ?, total_price = ? WHERE id = ?",
+      [price, price, bookingId]
+    );
+
+    // Post to conversation
+    const [convRows] = await db.execute(
+      "SELECT id FROM conversations WHERE booking_id = ? LIMIT 1",
+      [bookingId]
+    );
+    if (convRows.length > 0) {
+      await db.execute(
+        "INSERT INTO messages (conversation_id, sender_id, message_text) VALUES (?, ?, ?)",
+        [convRows[0].id, req.user.id, `💰 Rental price updated to ₹${price} as agreed.`]
+      );
+    }
+
+    return res.json({ success: true, message: `Price updated to ₹${price}.`, newPrice: price });
+  } catch (err) {
+    console.error("Negotiate price error:", err.message);
+    return res.status(500).json({ success: false, message: "Failed to update price." });
   }
 });
 

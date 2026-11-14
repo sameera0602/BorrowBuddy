@@ -57,18 +57,56 @@ export interface Booking {
   borrower_email?: string;
   image_url?: string | null;
   conversation_id?: number | null;
+  borrower_confirmed_pickup?: boolean | number;
+  lender_confirmed_pickup?: boolean | number;
+  borrower_confirmed_return?: boolean | number;
+  lender_confirmed_return?: boolean | number;
+  agreed_price?: number | string | null;
 }
 
 export interface Conversation {
   id: number;
-  type: "booking" | "help";
+  type: string;
   booking_id?: number | null;
+  listing_id?: number | null;
   help_request_id?: number | null;
   created_at: string;
   updated_at: string;
   title?: string;
   item_title?: string;
+  item_id?: number | null;
+  item_image?: string | null;
+  rental_price_per_day?: number | string;
+  pickup_location?: string;
+  booking_status?: string;
+  booking_total_price?: number | string;
   help_title?: string;
+  item?: {
+    id: number;
+    title: string;
+    image_url?: string | null;
+    rental_price_per_day?: number | string;
+    deposit_amount?: number | string;
+    pickup_location?: string;
+    owner_id?: number;
+  } | null;
+  booking?: {
+    id: number;
+    status: "pending" | "accepted" | "declined" | "cancelled" | "active" | "completed";
+    borrower_confirmed_pickup?: boolean;
+    lender_confirmed_pickup?: boolean;
+    borrower_confirmed_return?: boolean;
+    lender_confirmed_return?: boolean;
+    borrower_id: number;
+    owner_id: number;
+    total_price: number | string;
+    agreed_price?: number | string | null;
+    start_date: string;
+    end_date: string;
+    borrower_notes?: string | null;
+    owner_response_notes?: string | null;
+  } | null;
+  userRole?: "borrower" | "lender" | "requester" | "helper" | "student";
   partner?: {
     id: number;
     name: string;

@@ -148,6 +148,22 @@ export const api = {
       body: JSON.stringify({ newStatus, responseNotes })
     }),
 
+  confirmPickup: (bookingId: number) =>
+    request(`/bookings/${bookingId}/confirm-pickup`, {
+      method: "POST"
+    }),
+
+  confirmReturn: (bookingId: number) =>
+    request(`/bookings/${bookingId}/confirm-return`, {
+      method: "POST"
+    }),
+
+  negotiatePrice: (bookingId: number, agreedPrice: number) =>
+    request(`/bookings/${bookingId}/negotiate-price`, {
+      method: "POST",
+      body: JSON.stringify({ agreedPrice })
+    }),
+
   // Chats
   getConversations: () => request("/chats", { method: "GET" }),
 
@@ -158,6 +174,12 @@ export const api = {
     request(`/chats/${conversationId}/messages`, {
       method: "POST",
       body: JSON.stringify({ messageText })
+    }),
+
+  startItemChat: (listingId: number, initialMessage?: string) =>
+    request("/chats/item", {
+      method: "POST",
+      body: JSON.stringify({ listingId, initialMessage })
     }),
 
   startDirectChat: (data: { helpRequestId?: number; targetUserId?: number; initialMessage?: string }) =>
