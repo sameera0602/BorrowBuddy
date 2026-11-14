@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import type { Listing, HelpRequest } from "../types";
 import { BookingModal } from "../components/BookingModal";
 import { 
@@ -293,7 +293,7 @@ export function HomePage() {
                 <div style={{ position: "relative", width: "100%", height: 170, background: "var(--bg-surface-soft)" }}>
                   {item.primary_image ? (
                     <img
-                      src={`http://localhost:5000${item.primary_image}`}
+                      src={getAssetUrl(item.primary_image)}
                       alt={item.title}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />

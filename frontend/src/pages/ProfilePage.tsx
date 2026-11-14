@@ -8,7 +8,8 @@ import {
   GraduationCap, 
   Calendar, 
   Edit3, 
-  LogOut 
+  LogOut,
+  Smartphone
 } from "lucide-react";
 
 export function ProfilePage() {
@@ -28,6 +29,14 @@ export function ProfilePage() {
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [isPWA, setIsPWA] = useState(false);
+
+  useEffect(() => {
+    setIsPWA(
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true
+    );
+  }, []);
 
   useEffect(() => {
     loadProfile();
@@ -290,6 +299,44 @@ export function ProfilePage() {
               </div>
             )}
           </div>
+        )}
+      </div>
+
+      {/* PWA App Status Card */}
+      <div className="bb-card" style={{ marginBottom: 24, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: "var(--radius-md)",
+              background: isPWA ? "rgba(16, 185, 129, 0.15)" : "var(--primary)",
+              color: isPWA ? "var(--success)" : "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+          >
+            <Smartphone size={22} color={isPWA ? "var(--success)" : "var(--accent-yellow)"} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-main)" }}>
+              {isPWA ? "BorrowBuddy App Installed" : "Progressive Web App (PWA)"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {isPWA ? "Running in native standalone app mode" : "Install on your home screen for rapid access & offline mode"}
+            </div>
+          </div>
+        </div>
+
+        {isPWA ? (
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--success)", background: "rgba(16, 185, 129, 0.1)", padding: "4px 10px", borderRadius: "var(--radius-full)" }}>
+            Active
+          </span>
+        ) : (
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)", background: "rgba(19, 34, 56, 0.08)", padding: "4px 10px", borderRadius: "var(--radius-full)" }}>
+            Install Ready
+          </span>
         )}
       </div>
 

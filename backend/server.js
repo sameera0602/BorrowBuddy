@@ -48,10 +48,6 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/reports", reportsRoutes);
 
 // Base & Health check
-app.get("/", function (req, res) {
-  res.send("BorrowBuddy backend is running!");
-});
-
 app.get("/api/health", function (req, res) {
   res.json({
     success: true,
@@ -59,6 +55,25 @@ app.get("/api/health", function (req, res) {
     timestamp: new Date().toISOString()
   });
 });
+
+// Serve frontend static build if available (supports unified single-server & PWA hosting)
+const frontendDistPath = path.join(__dirname, "../frontend/dist");
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.use((req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api") && !req.path.startsWith("/uploads")) {
+      const indexPath = path.join(frontendDistPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+    }
+    next();
+  });
+} else {
+  app.get("/", function (req, res) {
+    res.send("BorrowBuddy backend is running!");
+  });
+}
 
 // Global error handler
 app.use(function (err, req, res, next) {

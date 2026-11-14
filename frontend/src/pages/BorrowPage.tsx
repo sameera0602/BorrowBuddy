@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import type { Listing } from "../types";
 import { BookingModal } from "../components/BookingModal";
 import { 
@@ -188,7 +188,7 @@ export function BorrowPage() {
               <div style={{ position: "relative", width: "100%", height: 190, background: "var(--bg-surface-soft)" }}>
                 {item.primary_image ? (
                   <img
-                    src={`http://localhost:5000${item.primary_image}`}
+                    src={getAssetUrl(item.primary_image)}
                     alt={item.title}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
@@ -288,7 +288,7 @@ export function BorrowPage() {
                 {activeItem.images.map((img, i) => (
                   <img
                     key={i}
-                    src={`http://localhost:5000${img}`}
+                    src={getAssetUrl(img)}
                     alt={`${activeItem.title} ${i}`}
                     style={{
                       width: activeItem.images.length === 1 ? "100%" : 220,

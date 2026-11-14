@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { Booking, Listing } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
@@ -253,7 +253,7 @@ export function MyLendingPage() {
                 <div style={{ position: "relative", width: "100%", height: 160, background: "var(--bg-surface-soft)" }}>
                   {item.primary_image ? (
                     <img
-                      src={`http://localhost:5000${item.primary_image}`}
+                      src={getAssetUrl(item.primary_image)}
                       alt={item.title}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />

@@ -1,16 +1,47 @@
 {
-  "name": "BorrowBuddy - SRMIST Trichy Marketplace",
+  "name": "BorrowBuddy — SRMIST Tiruchirappalli",
   "short_name": "BorrowBuddy",
-  "description": "Student-to-student borrowing, lending, and academic support for SRMIST Tiruchirappalli",
+  "description": "Student-to-student sharing and academic support marketplace for SRMIST Tiruchirappalli.",
   "start_url": "/",
+  "id": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#FBF9F4",
   "theme_color": "#132238",
+  "categories": [
+    "education",
+    "shopping",
+    "lifestyle"
+  ],
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

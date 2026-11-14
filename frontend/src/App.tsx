@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Navbar } from "./components/Navbar";
 import { BottomNav } from "./components/BottomNav";
+import { InstallPrompt } from "./components/InstallPrompt";
 import { AuthPage } from "./pages/AuthPage";
 import { HomePage } from "./pages/HomePage";
 import { BorrowPage } from "./pages/BorrowPage";
@@ -57,7 +58,12 @@ function AppContent() {
 
   // Unauthenticated user -> Auth screen (Signup, OTP, Password, Login)
   if (!user) {
-    return <AuthPage />;
+    return (
+      <>
+        <AuthPage />
+        <InstallPrompt />
+      </>
+    );
   }
 
   // Authenticated user -> Full application dashboard
@@ -79,6 +85,7 @@ function AppContent() {
       </main>
 
       <BottomNav />
+      <InstallPrompt />
     </div>
   );
 }

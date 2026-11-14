@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { Listing, Report, ModerationLog } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
@@ -362,7 +362,7 @@ export function AdminPage() {
                 >
                   {item.images && item.images.length > 0 ? (
                     <img
-                      src={`http://localhost:5000${item.images[0]}`}
+                      src={getAssetUrl(item.images[0])}
                       alt={item.title}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
@@ -807,7 +807,7 @@ export function AdminPage() {
               {inspectListing.images?.map((img, i) => (
                 <img
                   key={i}
-                  src={`http://localhost:5000${img}`}
+                  src={getAssetUrl(img)}
                   alt={`photo ${i}`}
                   style={{ width: "100%", height: 180, objectFit: "cover", borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)" }}
                 />

@@ -1,0 +1,12 @@
+{
+  "name": "borrowbuddy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BorrowBuddy — Student-to-student sharing and academic support marketplace for SRMIST Tiruchirappalli",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "node backend/server.js",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev"
+  }
+}

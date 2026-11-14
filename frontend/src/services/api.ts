@@ -1,4 +1,11 @@
-const API_BASE = "http://localhost:5000/api";
+export const SERVER_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+export const API_BASE = `${SERVER_BASE}/api`;
+
+export function getAssetUrl(path: string | null | undefined): string {
+  if (!path) return "/placeholder-item.png";
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${SERVER_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;

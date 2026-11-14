@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { api } from "../services/api";
+import { api, getAssetUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { Booking } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
@@ -124,7 +124,7 @@ export function MyBorrowingsPage() {
               >
                 {b.image_url ? (
                   <img
-                    src={`http://localhost:5000${b.image_url}`}
+                    src={getAssetUrl(b.image_url)}
                     alt={b.item_title}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
